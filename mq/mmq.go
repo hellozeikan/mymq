@@ -3,7 +3,6 @@ package mq
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	pro "github.com/mymq/protocol"
 	"github.com/mymq/util"
 )
 
@@ -44,7 +44,7 @@ func NewMqOptions() *MqOptions {
 		MaxBytesPerFile: 104857600,
 		SyncEvery:       2500,
 		MsgTimeout:      60 * time.Second,
-		ClientTimeout:   nsq.DefaultClientTimeout,
+		ClientTimeout:   util.DefaultClientTimeout,
 	}
 }
 
@@ -63,19 +63,18 @@ func NewMmq(workerId int64, options *MqOptions) *Mmq {
 }
 
 func (n *Mmq) Main() {
-	n.WaitGroup.Wrap(func() { n.lookupLoop() })
-
 	tcpListener, err := net.Listen("tcp", n.TcpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.TcpAddr, err.Error())
 	}
 	n.TcpListener = tcpListener
+	protocols := map[int32]pro.Protocol{}
 	n.WaitGroup.Wrap(func() { util.TcpServer(n.TcpListener, &TcpProtocol{protocols: protocols}) })
 }
 
 func (n *Mmq) LoadMetadata() {
 	fn := fmt.Sprintf(path.Join(n.Options.DataPath, "Mmq.%d.dat"), n.WorkerId)
-	data, err := ioutil.ReadFile(fn)
+	data, err := os.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("ERROR: failed to read channel metadata from %s - %s", fn, err.Error())
@@ -87,7 +86,7 @@ func (n *Mmq) LoadMetadata() {
 		if line != "" {
 			parts := strings.SplitN(line, ":", 2)
 
-			if !nsq.IsValidTopicName(parts[0]) {
+			if !pro.IsValidTopicName(parts[0]) {
 				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
 				continue
 			}
@@ -96,7 +95,7 @@ func (n *Mmq) LoadMetadata() {
 			if len(parts) < 2 {
 				continue
 			}
-			if !nsq.IsValidChannelName(parts[1]) {
+			if !pro.IsValidChannelName(parts[1]) {
 				log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
 			}
 			topic.GetChannel(parts[1])
@@ -164,12 +163,12 @@ func (n *Mmq) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		// if using lookupd, make a blocking call to get the topics, and immediately create them.
 		// this makes sure that any message received is buffered to the right channels
-		if len(n.LookupPeers) > 0 {
-			channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddrs())
-			for _, channelName := range channelNames {
-				t.getOrCreateChannel(channelName)
-			}
-		}
+		// if len(n.LookupPeers) > 0 {
+		// 	channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddrs())
+		// 	for _, channelName := range channelNames {
+		// 		t.getOrCreateChannel(channelName)
+		// 	}
+		// }
 	}
 	return t
 }
@@ -209,7 +208,7 @@ func (n *Mmq) DeleteExistingTopic(topicName string) error {
 func (n *Mmq) idPump() {
 	lastError := time.Now()
 	for {
-		id, err := NewGUID(n.WorkerId)
+		id, err := util.NewGUID(n.WorkerId)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {

@@ -8,6 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/mymq/mq"
 )
 
 var (
@@ -19,14 +22,13 @@ var (
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
-	verbose         = flag.Bool("verbose", false, "enable verbose logging")
 )
+var mmq *mq.Mmq
 
 func main() {
 	flag.Parse()
 	fmt.Println(*showVersion)
-	_, err := net.ResolveTCPAddr("tcp", *tcpAddress)
-	// tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -37,4 +39,16 @@ func main() {
 		exitChan <- 1
 	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	options := mq.NewMqOptions()
+	options.MemQueueSize = *memQueueSize
+	options.DataPath = *dataPath
+	options.MaxBytesPerFile = *maxBytesPerFile
+	options.SyncEvery = *syncEvery
+	options.MsgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+	mmq = mq.NewMmq(*workerId, options)
+	mmq.TcpAddr = tcpAddr
+	mmq.LoadMetadata()
+	mmq.Main()
+	<-exitChan
+	mmq.Exit()
 }

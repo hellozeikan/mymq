@@ -36,7 +36,6 @@ func EmptyQueue(q Queue) error {
 
 func FlushQueue(q Queue) error {
 	var msgBuf bytes.Buffer
-
 	for {
 		select {
 		case msg := <-q.MemoryChan():
@@ -48,7 +47,6 @@ func FlushQueue(q Queue) error {
 			goto finish
 		}
 	}
-
 finish:
 	for _, item := range q.InFlight() {
 		msg := item.Value.(*inFlightMessage).msg
@@ -57,7 +55,6 @@ finish:
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 		}
 	}
-
 	for _, item := range q.Deferred() {
 		msg := item.Value.(*Message)
 		err := WriteMessageToBackend(&msgBuf, msg, q)

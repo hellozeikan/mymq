@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"runtime"
@@ -20,7 +21,8 @@ func TcpServer(listener net.Listener, handler TcpHandler) {
 			if _, ok := err.(net.Error); ok {
 				log.Printf("NOTICE: temporary Accept() failure - %s", err.Error())
 				runtime.Gosched()
-				continue
+				break
+				// continue
 			}
 			// theres no direct way to detect this error because it is not exposed
 			if !strings.Contains(err.Error(), "use of closed network connection") {
@@ -28,7 +30,9 @@ func TcpServer(listener net.Listener, handler TcpHandler) {
 			}
 			break
 		}
-		go handler.Handle(clientConn)
+		// do somethings
+		// go handler.Handle(clientConn)
+		fmt.Println(clientConn.LocalAddr(), clientConn.RemoteAddr())
 	}
 
 	log.Printf("TCP: closing %s", listener.Addr().String())
