@@ -227,3 +227,7 @@ func (t *Topic) Delete() error {
 	t.Unlock()
 	return t.Close()
 }
+
+func (t *Topic) Depth() int64 {
+	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
+}

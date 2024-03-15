@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 type TcpHandler interface {
@@ -14,7 +15,7 @@ type TcpHandler interface {
 
 func TcpServer(listener net.Listener, handler TcpHandler) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
-
+	var wg sync.WaitGroup
 	for {
 		clientConn, err := listener.Accept()
 		if err != nil {
@@ -31,9 +32,13 @@ func TcpServer(listener net.Listener, handler TcpHandler) {
 			break
 		}
 		// do somethings
-		// go handler.Handle(clientConn)
+		wg.Add(1)
+		go func() {
+			handler.Handle(clientConn)
+			wg.Done()
+		}()
 		fmt.Println(clientConn.LocalAddr(), clientConn.RemoteAddr())
 	}
-
+	wg.Wait()
 	log.Printf("TCP: closing %s", listener.Addr().String())
 }

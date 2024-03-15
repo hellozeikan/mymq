@@ -1,6 +1,7 @@
 package mq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -26,6 +27,8 @@ type Mmq struct {
 	IdChan      chan []byte
 	ExitChan    chan int
 	WaitGroup   util.WaitGroupWrapper
+	Ctx         context.Context
+	CtxCancel   context.CancelFunc
 }
 
 type MqOptions struct {
@@ -56,7 +59,7 @@ func NewMmq(workerId int64, options *MqOptions) *Mmq {
 		IdChan:   make(chan []byte, 4096),
 		ExitChan: make(chan int),
 	}
-
+	n.Ctx, n.CtxCancel = context.WithCancel(context.Background())
 	n.WaitGroup.Wrap(func() { n.idPump() })
 
 	return n
@@ -68,7 +71,7 @@ func (n *Mmq) Main() {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.TcpAddr, err.Error())
 	}
 	n.TcpListener = tcpListener
-	protocols := map[int32]pro.Protocol{}
+	protocols := map[string]pro.Protocol{"V1": nil}
 	n.WaitGroup.Wrap(func() { util.TcpServer(n.TcpListener, &TcpProtocol{protocols: protocols}) })
 }
 

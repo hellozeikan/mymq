@@ -22,6 +22,7 @@ type Consumer interface {
 	Pause()
 	Close() error
 	TimedOutMessage()
+	Stats() ClientStats
 }
 
 // Channel represents the concrete type for a NSQ channel (and also

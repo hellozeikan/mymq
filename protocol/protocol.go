@@ -12,7 +12,6 @@ import (
 )
 
 var MagicV1 = []byte("  V1")
-var MagicV2 = []byte("  V2")
 
 const MaxReadyCount = 2500
 
