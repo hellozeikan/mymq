@@ -61,22 +61,22 @@ func NewMmq(workerId int64, options *MqOptions) *Mmq {
 	}
 	n.Ctx, n.CtxCancel = context.WithCancel(context.Background())
 	n.WaitGroup.Wrap(func() { n.idPump() })
-
+	mmq = n
 	return n
 }
 
-func (n *Mmq) Main() {
-	tcpListener, err := net.Listen("tcp", n.TcpAddr.String())
+func (m *Mmq) Main() {
+	tcpListener, err := net.Listen("tcp", m.TcpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", n.TcpAddr, err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", m.TcpAddr, err.Error())
 	}
-	n.TcpListener = tcpListener
+	m.TcpListener = tcpListener
 	protocols := map[string]pro.Protocol{"V1": nil}
-	n.WaitGroup.Wrap(func() { util.TcpServer(n.TcpListener, &TcpProtocol{protocols: protocols}) })
+	m.WaitGroup.Wrap(func() { util.TcpServer(m.TcpListener, &TcpProtocol{protocols: protocols}) })
 }
 
-func (n *Mmq) LoadMetadata() {
-	fn := fmt.Sprintf(path.Join(n.Options.DataPath, "Mmq.%d.dat"), n.WorkerId)
+func (m *Mmq) LoadMetadata() {
+	fn := fmt.Sprintf(path.Join(m.Options.DataPath, "Mmq.%d.dat"), m.WorkerId)
 	data, err := os.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -93,7 +93,7 @@ func (n *Mmq) LoadMetadata() {
 				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
 				continue
 			}
-			topic := n.GetTopic(parts[0])
+			topic := m.GetTopic(parts[0])
 
 			if len(parts) < 2 {
 				continue
@@ -106,21 +106,20 @@ func (n *Mmq) LoadMetadata() {
 	}
 }
 
-func (n *Mmq) Exit() {
-	if n.TcpListener != nil {
-		n.TcpListener.Close()
+func (m *Mmq) Exit() {
+	if m.TcpListener != nil {
+		m.TcpListener.Close()
 	}
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
-	fn := fmt.Sprintf(path.Join(n.Options.DataPath, "Mmq.%d.dat"), n.WorkerId)
+	fn := fmt.Sprintf(path.Join(m.Options.DataPath, "Mmq.%d.dat"), m.WorkerId)
 	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())
 	}
 
-	log.Printf("NSQ: closing topics")
-	n.Lock()
-	for _, topic := range n.TopicMap {
+	m.Lock()
+	for _, topic := range m.TopicMap {
 		if f != nil {
 			topic.Lock()
 			fmt.Fprintf(f, "%s\n", topic.name)
@@ -133,7 +132,7 @@ func (n *Mmq) Exit() {
 		}
 		topic.Close()
 	}
-	n.Unlock()
+	m.Unlock()
 
 	if f != nil {
 		f.Sync()
@@ -142,45 +141,33 @@ func (n *Mmq) Exit() {
 
 	// we want to do this last as it closes the idPump (if closed first it
 	// could potentially starve items in process and deadlock)
-	close(n.ExitChan)
-	n.WaitGroup.Wait()
+	close(m.ExitChan)
+	m.WaitGroup.Wait()
 }
 
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
-func (n *Mmq) GetTopic(topicName string) *Topic {
-	n.Lock()
-	t, ok := n.TopicMap[topicName]
+func (m *Mmq) GetTopic(topicName string) *Topic {
+	m.Lock()
+	t, ok := m.TopicMap[topicName]
 	if ok {
-		n.Unlock()
+		m.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, n.Options)
-		n.TopicMap[topicName] = t
+		t = NewTopic(topicName, m.Options)
+		m.TopicMap[topicName] = t
 		log.Printf("TOPIC(%s): created", t.name)
 
-		// release our global Mmq lock, and switch to a more granular topic lock while we init our
-		// channels from lookupd. This blocks concurrent PutMessages to this topic.
-		t.Lock()
-		defer t.Unlock()
-		n.Unlock()
-		// if using lookupd, make a blocking call to get the topics, and immediately create them.
-		// this makes sure that any message received is buffered to the right channels
-		// if len(n.LookupPeers) > 0 {
-		// 	channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddrs())
-		// 	for _, channelName := range channelNames {
-		// 		t.getOrCreateChannel(channelName)
-		// 	}
-		// }
+		m.Unlock()
 	}
 	return t
 }
 
 // GetExistingTopic gets a topic only if it exists
-func (n *Mmq) GetExistingTopic(topicName string) (*Topic, error) {
-	n.RLock()
-	defer n.RUnlock()
-	topic, ok := n.TopicMap[topicName]
+func (m *Mmq) GetExistingTopic(topicName string) (*Topic, error) {
+	m.RLock()
+	defer m.RUnlock()
+	topic, ok := m.TopicMap[topicName]
 	if !ok {
 		return nil, errors.New("topic does not exist")
 	}
@@ -188,16 +175,16 @@ func (n *Mmq) GetExistingTopic(topicName string) (*Topic, error) {
 }
 
 // DeleteExistingTopic removes a topic only if it exists
-func (n *Mmq) DeleteExistingTopic(topicName string) error {
-	n.Lock()
-	topic, ok := n.TopicMap[topicName]
+func (m *Mmq) DeleteExistingTopic(topicName string) error {
+	m.Lock()
+	topic, ok := m.TopicMap[topicName]
 	if !ok {
-		n.Unlock()
+		m.Unlock()
 		return errors.New("topic does not exist")
 	}
-	delete(n.TopicMap, topicName)
+	delete(m.TopicMap, topicName)
 	// not defered so that we can continue while the topic async closes
-	n.Unlock()
+	m.Unlock()
 
 	log.Printf("TOPIC(%s): deleting", topic.name)
 
@@ -208,10 +195,10 @@ func (n *Mmq) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
-func (n *Mmq) idPump() {
+func (m *Mmq) idPump() {
 	lastError := time.Now()
 	for {
-		id, err := util.NewGUID(n.WorkerId)
+		id, err := util.NewGUID(m.WorkerId)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {
@@ -223,8 +210,8 @@ func (n *Mmq) idPump() {
 			continue
 		}
 		select {
-		case n.IdChan <- id.Hex():
-		case <-n.ExitChan:
+		case m.IdChan <- id.Hex():
+		case <-m.ExitChan:
 			goto exit
 		}
 	}

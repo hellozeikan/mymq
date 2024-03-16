@@ -17,7 +17,7 @@ type TcpProtocol struct {
 
 func (tcpP *TcpProtocol) Handle(conn net.Conn) {
 	log.Printf("TCP: new client(%s)", conn.RemoteAddr())
-	buf := make([]byte, 2) // The first two bytes are the version number
+	buf := make([]byte, 3) // The first two bytes are the version number
 	_, err := io.ReadFull(conn, buf)
 	if err != nil {
 		conn.Close()
@@ -29,16 +29,14 @@ func (tcpP *TcpProtocol) Handle(conn net.Conn) {
 		return
 	}
 	log.Printf("CLIENT(%s): desired protocol %d", conn.RemoteAddr(), protocolMagic)
-	fmt.Println("------", string(protocolMagic))
 	switch protocolMagic {
-	case "V1":
-		tcpP.protocols[string(protocolMagic)] = protocol
+	case "V1 ":
+		tcpP.protocols["V1"] = protocol
 	default:
 		pro.SendResponse(conn, []byte("E_BAD_PROTOCOL"))
 		log.Printf("ERROR: client(%s) bad protocol version %d", conn.RemoteAddr(), protocolMagic)
 		return
 	}
-	err = tcpP.protocols["V1"].IOLoop(conn)
 	if p, ok := tcpP.protocols["V1"]; ok {
 		err = p.IOLoop(conn)
 		if err != nil {

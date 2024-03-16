@@ -119,9 +119,6 @@ func (t *Topic) messagePump() {
 	var err error
 
 	for {
-		// do an extra check for exit before we select on all the memory/backend/exitChan
-		// this solves the case where we are closed and something else is writing into
-		// backend. we don't want to reverse that
 		if atomic.LoadInt32(&t.exitFlag) == 1 {
 			goto exit
 		}

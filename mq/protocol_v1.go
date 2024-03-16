@@ -3,10 +3,8 @@ package mq
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"strconv"
@@ -30,13 +28,12 @@ func (p *ProtocolV1) IOLoop(conn net.Conn) error {
 
 	err = nil
 	client.Reader = bufio.NewReader(client)
-	fmt.Println("11111111")
 	for {
-		client.SetReadDeadline(time.Now().Add(mmq.Options.ClientTimeout))
+		fmt.Println(mmq.Options)
+		client.Conn.SetReadDeadline(time.Now().Add(mmq.Options.ClientTimeout))
 		// ReadSlice does not allocate new space for the data each request
 		// ie. the returned slice is only valid until the next call to it
 		line, err = client.Reader.ReadSlice('\n')
-		fmt.Println("22222222")
 		if err != nil {
 			break
 		}
@@ -147,6 +144,7 @@ func (p *ProtocolV1) messagePump(client *ClientV1) {
 			c = client.Channel.clientMsgChan
 		} else {
 			c = nil
+			break
 		}
 
 		select {
@@ -154,7 +152,7 @@ func (p *ProtocolV1) messagePump(client *ClientV1) {
 		case <-heartbeat.C:
 			err = p.sendHeartbeat(client)
 			if err != nil {
-				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				log.Printf("PROTOCOL(V1): error sending heartbeat - %s", err.Error())
 			}
 		case msg, ok := <-c:
 			if !ok {
@@ -180,7 +178,7 @@ func (p *ProtocolV1) messagePump(client *ClientV1) {
 	}
 
 exit:
-	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client == nil)
 	heartbeat.Stop()
 	client.Channel.RemoveClient(client)
 	if err != nil {
@@ -335,18 +333,18 @@ func (p *ProtocolV1) PUB(client *ClientV1, params [][]byte) ([]byte, error) {
 		return nil, util.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
-	var bodyLen int32
-	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
-	if err != nil {
-		return nil, util.NewClientErr("E_BAD_BODY", err.Error())
-	}
+	// var bodyLen int32
+	// err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
+	// if err != nil {
+	// 	return nil, util.NewClientErr("E_BAD_BODY", err.Error())
+	// }
 
-	messageBody := make([]byte, bodyLen)
-	_, err = io.ReadFull(client.Reader, messageBody)
-	if err != nil {
-		return nil, util.NewClientErr("E_BAD_BODY", err.Error())
-	}
-
+	// messageBody := make([]byte, bodyLen)
+	// _, err = io.ReadFull(client.Reader, messageBody)
+	// if err != nil {
+	// 	return nil, util.NewClientErr("E_BAD_BODY", err.Error())
+	// }
+	messageBody := params[2]
 	topic := mmq.GetTopic(topicName)
 	msg := NewMessage(<-mmq.IdChan, messageBody)
 	err = topic.PutMessage(msg)

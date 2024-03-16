@@ -22,6 +22,7 @@ var (
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
+	verbose         = flag.Bool("verbose", false, "enable verbose logging")
 )
 var mmq *mq.Mmq
 
